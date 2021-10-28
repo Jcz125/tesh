@@ -17,6 +17,17 @@
 #define STDOUT_FD 1
 #define STDERR_FD 2
 
+#define NB_SPECIAL_STRING 7
+const char *special_string[] = {
+    ";",
+    ">",
+    ">>",
+    "|",
+    "&&",
+    "||",
+    "<"
+};
+
 bool stop = false;
 
 int decouper(char* entree, char **sortie) {
@@ -105,8 +116,7 @@ int main(int argc, char *argv[]) {
     char *user_home;
 
     char entree[BUFFER_LENGTH];
-    char *current_args[ARG_MAX]; // Tableau pour découper l'entrée
-    char *next_args[ARG_MAX]; // Tableau à donner à exec
+    char *entree_decoupee[ARG_MAX]; // Tableau pour découper l'entrée
 
     bool next_silent = false;
 
@@ -140,13 +150,13 @@ int main(int argc, char *argv[]) {
             return EXIT_SUCCESS;
         }
         memcpy(entree, input_buffer, BUFFER_LENGTH);
-        int nbargs = decouper(entree, current_args);
+        int nbargs = decouper(entree, entree_decoupee);
 
-        if (nbargs == 0 || current_args[0][0] == '\0') {
+        if (nbargs == 0 || entree_decoupee[0][0] == '\0') {
             continue;
         }
 
-        if (strcmp(current_args[0], "cd")  == 0) {
+        if (strcmp(entree_decoupee[0], "cd")  == 0) {
             char *path = input_buffer + 3; // Après "cd "
             if (nbargs == 1) {
                 path = user_home;
@@ -159,9 +169,35 @@ int main(int argc, char *argv[]) {
             }
         }
         else {
+            int base = 0;
             int status;
-            run(current_args[0], current_args, STDIN_FD, true);
-            waitpid(-1, &status, 0);
+            int next;
+            while (base < nbargs) {
+                int spe_i = -1;
+                for (next = base; next < nbargs; ++next)
+                {
+                    for (int i = 0; i < NB_SPECIAL_STRING; ++i)
+                    {
+                        if (strcmp(entree_decoupee[next], special_string[i]) == 0) {
+                            spe_i = i;
+                            break;
+                        }
+                    }
+                    if (spe_i != -1)
+                        break;
+                }
+
+                // on en lève le caractère spécial pour que (entree_decoupee + base) puisse être donné directement à execvp
+                entree_decoupee[next] = NULL;
+                switch (spe_i) {
+                    case 0: // ;
+                    default:
+                        run((entree_decoupee + base)[0], (entree_decoupee + base), STDIN_FD, true);
+                        waitpid(-1, &status, 0);
+                        break;
+                }
+                base = ++next;
+            }
         }
     }
 
