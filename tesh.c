@@ -195,13 +195,18 @@ int main(int argc, char *argv[]) {
                         waitpid(-1, &status, 0);
                         run((entree_decoupee + base + next + 1)[0], (entree_decoupee + base + next + 1), STDIN_FD, true);
                         waitpid(-1, &status, 0);
+                        break;
                     case 1: // >
-                        int out = run((entree_decoupee + base)[0], (entree_decoupee + base), STDIN_FD, false);
+                        last_out = run((entree_decoupee + base)[0], (entree_decoupee + base), STDIN_FD, false);
                         waitpid(-1, &status, 0);
-                        run((entree_decoupee + base + next + 1)[0], (entree_decoupee + base + next + 1), out, true);
+                        // créer un file et écrire dans le file
                         waitpid(-1, &status, 0);
+                        break;
+                    case 2: // |
+                        last_out = run();
+                        break;
                     default:
-                        run((entree_decoupee + base)[0], (entree_decoupee + base + next + 1), STDIN_FD, true);
+                        run((entree_decoupee + base)[0], (entree_decoupee + base + next + 1), last_out, true);
                         waitpid(-1, &status, 0);
                         break;
                 }
