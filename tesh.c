@@ -95,7 +95,7 @@ int run(const char* file, char *args[], int input, bool to_stdout) {
         }
     }
 
-    // Plus besoin d'écire dans le pipe, c'est au fils de le faire
+    // Plus besoin d'écrire dans le pipe, c'est au fils de le faire
     close(fd[1]);
 
     if (input != STDIN_FD)
@@ -191,8 +191,17 @@ int main(int argc, char *argv[]) {
                 entree_decoupee[next] = NULL;
                 switch (spe_i) {
                     case 0: // ;
-                    default:
                         run((entree_decoupee + base)[0], (entree_decoupee + base), STDIN_FD, true);
+                        waitpid(-1, &status, 0);
+                        run((entree_decoupee + base + next + 1)[0], (entree_decoupee + base + next + 1), STDIN_FD, true);
+                        waitpid(-1, &status, 0);
+                    case 1: // >
+                        int out = run((entree_decoupee + base)[0], (entree_decoupee + base), STDIN_FD, false);
+                        waitpid(-1, &status, 0);
+                        run((entree_decoupee + base + next + 1)[0], (entree_decoupee + base + next + 1), out, true);
+                        waitpid(-1, &status, 0);
+                    default:
+                        run((entree_decoupee + base)[0], (entree_decoupee + base + next + 1), STDIN_FD, true);
                         waitpid(-1, &status, 0);
                         break;
                 }
