@@ -172,6 +172,7 @@ int main(int argc, char *argv[]) {
             int base = 0;
             int status;
             int next;
+            int last_out = STDIN_FD;
             while (base < nbargs) {
                 int spe_i = -1;
                 for (next = base; next < nbargs; ++next)
@@ -191,22 +192,59 @@ int main(int argc, char *argv[]) {
                 entree_decoupee[next] = NULL;
                 switch (spe_i) {
                     case 0: // ;
-                        run((entree_decoupee + base)[0], (entree_decoupee + base), STDIN_FD, true);
-                        waitpid(-1, &status, 0);
-                        run((entree_decoupee + base + next + 1)[0], (entree_decoupee + base + next + 1), STDIN_FD, true);
+                        run((entree_decoupee + base)[0], (entree_decoupee + base), last_out, true);
+                        last_out = STDIN_FD;
                         waitpid(-1, &status, 0);
                         break;
+
                     case 1: // >
-                        last_out = run((entree_decoupee + base)[0], (entree_decoupee + base), STDIN_FD, false);
+                        last_out = run((entree_decoupee + base)[0], (entree_decoupee + base), last_out, false);
                         waitpid(-1, &status, 0);
-                        // créer un file et écrire dans le file
+                        int fd = fopen("%c", "w", (entree_decoupee + next + 1)[0]);     // ouvre ou créer le fichier (en écriture) avec la chaîne se trouvant après >
+                        dup2(last_out, fd);     // peut-on utiliser write ?
+                        close(fd);
+                        base = ++next;
+                        break;
+
+                    case 2: // >>
+                        last_out = run((entree_decoupee + base)[0], (entree_decoupee + base), last_out, false);
+                        waitpid(-1, &status, 0);
+                        int fd = fopen("%c", "a", (entree_decoupee + next + 1)[0]);     // ouvre ou créer le fichier (en ajout) avec la chaîne se trouvant après >
+                        dup2(last_out, fd);
+                        close(fd);
+                        base = ++next;
+                        break;
+
+                    case 3: // |
+                        last_out = run((entree_decoupee + base)[0], (entree_decoupee + base), last_out, false);
                         waitpid(-1, &status, 0);
                         break;
-                    case 2: // |
-                        last_out = run();
+
+                    case 4: // &&
+                        run((entree_decoupee + base)[0], (entree_decoupee + base), last_out, true);
+                        last_out = STDIN_FD;
+                        waitpid(-1, &status, 0);
+                        if (status != 0)        // si la commande avant && ne s'est pas exécutée correctement
+                            base = nbargs;      // on ignore la commande après && donc ici on quitte la boucle while(base < nbargs)
+                            printf("une commande ne s'est pas lancé correctement\n");
                         break;
+
+                    case 5: // ||
+                        run((entree_decoupee + base)[0], (entree_decoupee + base), last_out, true);
+                        last_out = STDIN_FD;
+                        waitpid(-1, &status, 0);
+                        if (status == 0)        // si la commande avant || s'est exécutée sans erreur
+                            base = nbargs;      // on ignore la commande après || donc ici on quitte la boucle while(base < nbargs)
+                        break;
+
+                    case 6: // <
+                        base = ++next;
+                        int fd = fopen("%c", "r", (entree_decoupee + base)[0]);     // ouvre le fichier (en lecture)
+                        last_out = run((entree_decoupee + base - 2)[0], (entree_decoupee + base - 2), fd, false);
+                        break;
+
                     default:
-                        run((entree_decoupee + base)[0], (entree_decoupee + base + next + 1), last_out, true);
+                        run((entree_decoupee + base)[0], (entree_decoupee + base), last_out, true);
                         waitpid(-1, &status, 0);
                         break;
                 }
