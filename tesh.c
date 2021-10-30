@@ -112,17 +112,18 @@ int main(int argc, char *argv[]) {
     char input_buffer[BUFFER_LENGTH];
     char hostname[HOST_NAME_MAX];
     char path[PATH_MAX];
-    char *username = getlogin();
+    char *username;
     char *user_home;
+    struct passwd *pw = getpwuid(getuid());
 
-    char entree[BUFFER_LENGTH];
-    char *entree_decoupee[ARG_MAX]; // Tableau pour découper l'entrée
+    char entree[BUFFER_LENGTH]; // Copie de input_buffer mais apres l'appel à decoupage, les espaces remplacés par des \0
+    char *entree_decoupee[ARG_MAX]; // Tableau pour découper l'entrée (pointe vers entree)
 
-    bool next_silent = false;
-
-    if (username == NULL) {
-        printf("Erreur lors de la récupération du nom d'utilisateur.\n");
-        return EXIT_FAILURE;
+    if ((username = getlogin()) == NULL) {
+        if (pw == NULL || (username = pw->pw_name) == NULL) {
+            printf("Erreur lors de la récupération du nom d'utilisateur.\n");
+            return EXIT_FAILURE;
+        }
     }
 
     if (gethostname(hostname, HOST_NAME_MAX) != 0) {
@@ -131,7 +132,7 @@ int main(int argc, char *argv[]) {
     }
 
     if ((user_home = getenv("HOME")) == NULL) {
-        if ((user_home = getpwuid(getuid())->pw_dir) == NULL) {
+        if (pw == NULL || (user_home = pw->pw_dir) == NULL) {
             printf("Impossible de réccupérer le Home de l'utilisateur.\n");
             return EXIT_FAILURE;
         }
