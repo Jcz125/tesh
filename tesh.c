@@ -17,19 +17,23 @@
 #define STDOUT_FD 1
 #define STDERR_FD 2
 
-#define NB_SPECIAL_STRING 7
+#define NB_SPECIAL_STRING 5
 const char *special_string[] = {
     ";",
-    ">",
-    ">>",
     "|",
     "&&",
     "||",
-    "<"
+    "&"
 };
 
 bool stop = false;
 
+/*Decoupe l'entree en un tableau
+ char* entree : L'entree à decouper,
+ char **sortie : Tableau pointant vers chaque début d'argument dans entree
+
+ int de retour : nombre d'élèment dans sortie
+*/
 int decouper(char* entree, char **sortie) {
     int i = 0;
     char *base = entree;
@@ -65,6 +69,83 @@ int decouper(char* entree, char **sortie) {
     return i;
 }
 
+char** search(char** base, char** end, int *spe_i) {
+    *spe_i = -1;
+    char** next;
+    for (next = base; next < end; next++) {
+        for (int i = 0; i < NB_SPECIAL_STRING; ++i) {
+            if (strcmp(next[0], special_string[i]) == 0) {
+                *spe_i = i;
+                return next;
+            }
+        }
+    }
+    return next;
+}
+
+/* Reordonne l'entree decoupé pour :
+ avoir la redirection vers des ficheirs au début (que la dernière redirection donnée est gardée)
+ avoir la redirection d'un fichier en entree au début (que la dernière redirection donnée est gardée)
+ Exemples :
+    ls > fichier1 -la > fichier2
+    à
+    ls -la > fichier2 NULL NULL
+
+    grep > fichier3 < fichier1 "abc" < fichier2
+    à
+    < fichier2 grep "abc" > fichier3 NULL NULL
+*/
+void reorder(char** base, char** next) {
+    char *redirect_to = NULL; // pour les > >>
+    char *redirect_to_file = NULL;
+    char *redirect_from = NULL; // pour les <
+    char *redirect_from_file = NULL;
+    int nbargs = next - base;
+    for (int i = 0; base + i < next; ++i) {
+        if(strcmp(base[i], ">") == 0 || strcmp(base[i], ">>") == 0) {
+            if (++i < nbargs) {
+                redirect_to = base[i - 1];
+                redirect_to_file = base[i];
+                base[i - 1] = NULL;
+                base[i] = NULL;
+            }
+        }
+        else if (strcmp(base[i], "<") == 0) {
+            if (++i < nbargs) {
+                redirect_from = base[i - 1];
+                redirect_from_file = base[i];
+                base[i - 1] = NULL;
+                base[i] = NULL;
+            }
+        }
+    }
+    int decalage = 0;
+    if (redirect_to != NULL)
+        decalage += 2;
+    if (redirect_from != NULL)
+        decalage += 2;
+    if (decalage == 0)
+        return;
+    char **from = base;
+    char **to = base + decalage;
+    while (from < next) {
+        if (from[0] != NULL) {
+            (to++)[0] = from[0];
+            from[0] = NULL;
+        }
+        from++;
+    }
+    if (redirect_to != NULL) {
+        (base++)[0] = redirect_to;
+        (base++)[0] = redirect_to_file;
+    }
+    if (redirect_from != NULL) {
+        (base++)[0] = redirect_from;
+        (base++)[0] = redirect_from_file;
+    }
+}
+
+
 /*
 Lance un exécutable et gère la sortie et l'entrée
  char* file : fichier à éxécuter
@@ -81,28 +162,24 @@ int run(const char* file, char *args[], int input, bool to_stdout) {
 
     if(!fork()) {
         //si fils
-        if (input != STDIN_FD) {
+        if (input != STDIN_FD)
             dup2(input, STDIN_FD);
-        }
-        if (!to_stdout) {
+        if (!to_stdout)
             dup2(fd[1], STDOUT_FD);
-        }
 
         int status = execvp(file, args);
-        if (status == -1) {
-            fprintf(stderr, "Ne peut pas exécuter \"%s\" Code d'erreur : %d\n", file, status);
-            exit(EXIT_FAILURE);
-        }
+        fprintf(stderr, "Ne peut pas exécuter \"%s\" Code d'erreur : %d\n", file, status);
+        exit(EXIT_FAILURE);
     }
-
-    // Plus besoin d'écire dans le pipe, c'est au fils de le faire
-    close(fd[1]);
 
     if (input != STDIN_FD)
         close(input);
 
-    if (!to_stdout)
+    if (!to_stdout) {
+        // Plus besoin d'écire dans le pipe, c'est au fils de le faire
+        close(fd[1]);
         return fd[0];
+    }
 
     return STDOUT_FD;
 }
@@ -170,30 +247,21 @@ int main(int argc, char *argv[]) {
             }
         }
         else {
-            int base = 0;
+            char **base = entree_decoupee;
+            char **next;
+            char **end = entree_decoupee + nbargs;
             int status;
-            int next;
-            while (base < nbargs) {
-                int spe_i = -1;
-                for (next = base; next < nbargs; ++next)
-                {
-                    for (int i = 0; i < NB_SPECIAL_STRING; ++i)
-                    {
-                        if (strcmp(entree_decoupee[next], special_string[i]) == 0) {
-                            spe_i = i;
-                            break;
-                        }
-                    }
-                    if (spe_i != -1)
-                        break;
-                }
+            while (base < end) {
+                int spe_i;
+                next = search(base, end, &spe_i);
+                //reorder(base, next);
 
-                // on en lève le caractère spécial pour que (entree_decoupee + base) puisse être donné directement à execvp
-                entree_decoupee[next] = NULL;
+                // on en lève le caractère spécial pour que base puisse être donné directement à execvp
+                next[0] = NULL;
                 switch (spe_i) {
                     case 0: // ;
                     default:
-                        run((entree_decoupee + base)[0], (entree_decoupee + base), STDIN_FD, true);
+                        run(base[0], base, STDIN_FD, true);
                         waitpid(-1, &status, 0);
                         break;
                 }
