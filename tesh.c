@@ -161,7 +161,7 @@ Créer le file descriptor en cas d'existance d'un élément de redirection entre
 */
 int create_fd(char** start, char** base, int* last_out) {
     // à compléter (soon)
-    return NULL;
+    return 0;
 }
 
 /*
@@ -270,9 +270,9 @@ int main(int argc, char *argv[]) {
             char **end = entree_decoupee + nbargs;
             int status;
             int last_out = STDIN_FD;
-            int old_out = NULL;
+            int old_out = 0;
             char **start = entree_decoupee;
-            int fd = NULL;
+            int fd = 0;
             while (base < end) {
                 int spe_i;
                 next = search(base, end, &spe_i);
@@ -311,8 +311,8 @@ int main(int argc, char *argv[]) {
 */
                     case 1: // |
                         old_out = last_out;
-                        fd = create_fd(debut, base, &last_out);
-                        if (old_out == last_out & fd) {
+                        fd = create_fd(start, base, &last_out);
+                        if ((old_out == last_out) & fd) {
                             last_out = run((base)[0], (base), last_out, false);
                             dup2(fd, last_out);
                             last_out = STDIN_FD;
@@ -324,20 +324,19 @@ int main(int argc, char *argv[]) {
 
                     case 2: // &&
                         old_out = last_out;
-                        fd = create_fd(debut, base, &last_out);
+                        fd = create_fd(start, base, &last_out);
                         run((base)[0], (base), last_out, true);
                         if (old_out == last_out && fd)
                             dup2(fd, last_out);
                         last_out = STDIN_FD;
                         waitpid(-1, &status, 0);
-                        if (status != 0)        // si la commande avant && ne s'est pas exécutée correctement
-                            base = end;         // on ignore la commande après && donc ici on quitte la boucle while(base < end)
-                            printf("une commande ne s'est pas lancé correctement\n");
+                        if (status != 0)            // si la commande avant && ne s'est pas exécutée correctement
+                            base = end;             // on ignore la commande après && donc ici on quitte la boucle while(base < end)
                         break;
 
                     case 3: // ||
                         old_out = last_out;
-                        fd = create_fd(debut, base, &last_out);
+                        fd = create_fd(start, base, &last_out);
                         run((base)[0], (base), last_out, true);
                         if (old_out == last_out && fd)
                             dup2(fd, last_out);
@@ -355,7 +354,7 @@ int main(int argc, char *argv[]) {
 */
                     default:
                         old_out = last_out;
-                        fd = create_fd(debut, base, &last_out);
+                        fd = create_fd(start, base, &last_out);
                         run(base[0], base, last_out, true);
                         if (old_out == last_out && fd)
                             dup2(fd, last_out);
