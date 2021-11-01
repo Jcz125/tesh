@@ -288,7 +288,7 @@ int main(int argc, char *argv[]) {
                         if (old_out == last_out && fd)                  // ça veut dire qu'on est dans le cas de > ou >>
                             dup2(fd, last_out);
                         last_out = STDIN_FD;
-                        waitpid(-1, &status, 0);
+                        waitpid(-1, &status, 0);                        // dois-je décaler ça pour mettre juste après les run ?
                         break;
 /*
                     case 1: // >
@@ -319,7 +319,7 @@ int main(int argc, char *argv[]) {
                         }
                         else
                             last_out = run((base)[0], (base), last_out, false);
-                        waitpid(-1, &status, 0);        // dois-je décaler ça pour mettre juste après les run ?
+                        waitpid(-1, &status, 0);
                         break;
 
                     case 2: // &&
