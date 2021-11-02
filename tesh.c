@@ -7,8 +7,9 @@
 #include <limits.h>
 #include <sys/types.h>
 #include <sys/wait.h>
-#include <limits.h>
 #include <pwd.h>
+#include <sys/stat.h>
+#include <fcntl.h>
 
 #define BUFFER_LENGTH 4096
 #define ARG_MAX 512
@@ -159,22 +160,32 @@ void reorder(char** base, char** next) {
 }
 
 /*
-Créer le file descriptor en cas d'existance d'un élément de redirection entre start et base
- char** start : début de la séquence à traiter
- char** base : position de la commande
- int* last_out : sortie de la denière commande exécutée (en général un fd ou un stdin si aucune sortie)
+Créer le file descriptor en cas d'existence d'un élément de redirection entre base et la 1ère commande à exécuter
+ char*** base_adr : adresse de position du pointeur (initialement au début de la table)
+ int** last_out_adr : adresse de la dernière sortie (en général un fd ou un stdin s'il n'y a eu aucune sortie de commande)
  
  exemple : > fichier ls | grep "d"
- start pointe sur >
- base pointe sur ls
+ base pointe sur >
  last_out = 0 (ici)
  create_fd voit un >, elle crée le fd et return le fd sans modifier last_out (car inutile)
  dans le cas de <, elle crée le fd et return le fd en modifiant last_out 
  (car on lit dans le fichier pour passer le contenu dans la commande pointée par base via last_out qui sera mis à jour)
 */
-int create_fd(char** start, char** base, int* last_out) {
-    // à compléter (soon)
-    return 0;
+int create_fd(char*** base_adr, int* last_out_adr) {
+    int fd = 0;
+    if (strcmp(*base_adr[0], ">")) {
+        fd = open("%c", O_WRONLY, *base_adr[1]);
+        *base_adr += 2;
+    }
+    else if (strcmp(*base_adr[0], ">>")) {
+        fd = open("%c", O_APPEND, *base_adr[1]);
+        *base_adr += 2;
+    }
+    if (strcmp(*base_adr[0], "<")) {
+        *last_out_adr = open("%c", O_RDONLY, *base_adr[1]);
+        *base_adr += 2;
+    }
+    return fd;
 }
 
 /*
@@ -284,7 +295,7 @@ int main(int argc, char *argv[]) {
             int status;
             int last_out = STDIN_FD;
             int old_out = 0;
-            char **start = entree_decoupee;
+            pid_t pid;
             int fd = 0;
             while (base < end) {
                 int spe_i;
@@ -296,12 +307,12 @@ int main(int argc, char *argv[]) {
                 switch (spe_i) {
                     case 0: // ;
                         old_out = last_out;
-                        fd = create_fd(start, base, &last_out);         // à écrire : créer le file director s'il y a un élément de redirection entre debut et base (qui pointe sur la première commande à exécuter), sinon renvoi NULL
-                        run((base)[0], (base), last_out, true);
+                        fd = create_fd(&base, &last_out);         // à écrire : créer le file descriptor s'il y a un élément de redirection entre debut et base (qui pointe sur la première commande à exécuter), sinon renvoi NULL
+                        run(base[0], (base), last_out, true);
                         if (old_out == last_out && fd)                  // ça veut dire qu'on est dans le cas de > ou >>
                             dup2(fd, last_out);
                         last_out = STDIN_FD;
-                        waitpid(-1, &status, 0);                        // dois-je décaler ça pour mettre juste après les run ?
+                        // waitpid(-1, &status, 0);                        // dois-je décaler ça pour mettre juste après les run ? ici il est inutile car ; n'a pas besoin d'attendre
                         break;
 /*
                     case 1: // >
@@ -322,35 +333,35 @@ int main(int argc, char *argv[]) {
                         base = ++next;
                         break;
 */
-                    case 1: // |
+                    case 1: // | cas particulier à traiter : cmd1 | cmd2 < fichier
                         old_out = last_out;
-                        fd = create_fd(start, base, &last_out);
+                        fd = create_fd(&base, &last_out);
                         if ((old_out == last_out) & fd) {
-                            last_out = run((base)[0], (base), last_out, false);
+                            last_out = run(base[0], (base), last_out, false);
                             dup2(fd, last_out);
                             last_out = STDIN_FD;
                         }
                         else
                             last_out = run((base)[0], (base), last_out, false);
-                        waitpid(-1, &status, 0);
+                        // ici un wait va bloquer le pipe
                         break;
 
                     case 2: // &&
                         old_out = last_out;
-                        fd = create_fd(start, base, &last_out);
-                        run((base)[0], (base), last_out, true);
+                        fd = create_fd(&base, &last_out);
+                        run(base[0], (base), last_out, true);
+                        waitpid(-1, &status, 0);
                         if (old_out == last_out && fd)
                             dup2(fd, last_out);
                         last_out = STDIN_FD;
-                        waitpid(-1, &status, 0);
                         if (status != 0)            // si la commande avant && ne s'est pas exécutée correctement
                             base = end;             // on ignore la commande après && donc ici on quitte la boucle while(base < end)
                         break;
 
                     case 3: // ||
                         old_out = last_out;
-                        fd = create_fd(start, base, &last_out);
-                        run((base)[0], (base), last_out, true);
+                        fd = create_fd(&base, &last_out);
+                        run(base[0], (base), last_out, true);
                         if (old_out == last_out && fd)
                             dup2(fd, last_out);
                         last_out = STDIN_FD;
@@ -367,7 +378,7 @@ int main(int argc, char *argv[]) {
 */
                     default:
                         old_out = last_out;
-                        fd = create_fd(start, base, &last_out);
+                        fd = create_fd(&base, &last_out);
                         run(base[0], base, last_out, true);
                         if (old_out == last_out && fd)
                             dup2(fd, last_out);
@@ -375,7 +386,6 @@ int main(int argc, char *argv[]) {
                         break;
                 }
                 base = ++next;
-                start = base;
             }
         }
     }
