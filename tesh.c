@@ -173,15 +173,15 @@ Créer le file descriptor en cas d'existence d'un élément de redirection entre
 */
 int create_fd(char*** base_adr, int* last_out_adr) {
     int fd = 0;
-    if (strcmp(*base_adr[0], ">")) {
+    if (!strcmp(*base_adr[0], ">")) {
         fd = open("%c", O_WRONLY, *base_adr[1]);
         *base_adr += 2;
     }
-    else if (strcmp(*base_adr[0], ">>")) {
+    else if (!strcmp(*base_adr[0], ">>")) {
         fd = open("%c", O_APPEND, *base_adr[1]);
         *base_adr += 2;
     }
-    if (strcmp(*base_adr[0], "<")) {
+    if (!strcmp(*base_adr[0], "<")) {
         *last_out_adr = open("%c", O_RDONLY, *base_adr[1]);
         *base_adr += 2;
     }
