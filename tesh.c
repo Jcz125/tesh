@@ -101,6 +101,7 @@ void reorder(char** base, char** next) {
     char *redirect_from = NULL; // pour les <
     char *redirect_from_file = NULL;
     int nbargs = next - base;
+    int nb_supprime = 0;
     for (int i = 0; base + i < next; ++i) {
         if(strcmp(base[i], ">") == 0 || strcmp(base[i], ">>") == 0) {
             if (++i < nbargs) {
@@ -108,6 +109,7 @@ void reorder(char** base, char** next) {
                 redirect_to_file = base[i];
                 base[i - 1] = NULL;
                 base[i] = NULL;
+                nb_supprime += 2;
             }
         }
         else if (strcmp(base[i], "<") == 0) {
@@ -116,6 +118,7 @@ void reorder(char** base, char** next) {
                 redirect_from_file = base[i];
                 base[i - 1] = NULL;
                 base[i] = NULL;
+                nb_supprime += 2;
             }
         }
     }
@@ -126,15 +129,25 @@ void reorder(char** base, char** next) {
         decalage += 2;
     if (decalage == 0)
         return;
+    // but : <---decalage-->Reste<--nb_supprime-->
+    // étape1 : Reste<---decalage--><--nb_supprime-->
     char **from = base;
-    char **to = base + decalage;
+    char **to = base;
     while (from < next) {
         if (from[0] != NULL) {
-            (to++)[0] = from[0];
-            from[0] = NULL;
+            if (to != from) {
+                to[0] = from[0];
+                from[0] = NULL;
+            }
+            to++;
         }
         from++;
     }
+    //étape 2, le décalage
+    for (int i = nbargs - nb_supprime + decalage - 1; i >= decalage; --i) {
+        base[i] = base[i - decalage];
+    }
+
     if (redirect_to != NULL) {
         (base++)[0] = redirect_to;
         (base++)[0] = redirect_to_file;
