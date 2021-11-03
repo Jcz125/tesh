@@ -174,16 +174,18 @@ Créer le file descriptor en cas d'existence d'un élément de redirection entre
 int create_fd(char*** base_adr, int* last_out_adr) {
     int fd = 0;
     if (!strcmp(*base_adr[0], ">")) {
-        fd = open("%c", O_WRONLY, *base_adr[1]);
+        fd = open((*base_adr)[1], O_WRONLY);
+        printf("PRINT - int fd = %d\n", fd);
         *base_adr += 2;
     }
     else if (!strcmp(*base_adr[0], ">>")) {
-        fd = open("%c", O_APPEND, *base_adr[1]);
+        fd = open((*base_adr)[1], O_APPEND);
         *base_adr += 2;
     }
     if (!strcmp(*base_adr[0], "<")) {
-        *last_out_adr = open("%c", O_RDONLY, *base_adr[1]);
+        *last_out_adr = open((*base_adr)[1], O_RDONLY);
         *base_adr += 2;
+        // printf("passage <\n");
     }
     return fd;
 }
@@ -343,7 +345,6 @@ int main(int argc, char *argv[]) {
                         }
                         else
                             last_out = run((base)[0], (base), last_out, false);
-                        // ici un wait va bloquer le pipe
                         break;
 
                     case 2: // &&
@@ -362,10 +363,10 @@ int main(int argc, char *argv[]) {
                         old_out = last_out;
                         fd = create_fd(&base, &last_out);
                         run(base[0], (base), last_out, true);
+                        waitpid(-1, &status, 0);
                         if (old_out == last_out && fd)
                             dup2(fd, last_out);
                         last_out = STDIN_FD;
-                        waitpid(-1, &status, 0);
                         if (status == 0)        // si la commande avant || s'est exécutée sans erreur
                             base = end;         // on ignore la commande après || donc ici on quitte la boucle while(base < end)
                         break;
@@ -379,13 +380,20 @@ int main(int argc, char *argv[]) {
                     default:
                         old_out = last_out;
                         fd = create_fd(&base, &last_out);
-                        run(base[0], base, last_out, true);
-                        if (old_out == last_out && fd)
-                            dup2(fd, last_out);
+                        if ((old_out == last_out) && fd) {
+                            last_out = run(base[0], base, last_out, false);
+                            waitpid(-1, &status, 0);
+                            int i = dup2(fd, last_out);
+                            printf("PRINT - dup : %d ; last_out : %d\n", i, last_out);
+                        } else
+                            run(base[0], base, last_out, true);
                         waitpid(-1, &status, 0);
+                        last_out = STDIN_FD;
+                        // if (fd) close(fd);
                         break;
                 }
                 base = ++next;
+                fd = 0;
             }
         }
     }
