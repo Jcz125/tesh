@@ -299,7 +299,7 @@ int main(int argc, char *argv[]) {
             int last_out = STDIN_FD;
             int new_out;
             int nb_proc = 0; // compte le nombre de processus en cours qui n'a pas de wait
-            // pid_t pid; // utile plus tard pour pouvoir récupérer le pid du fils qui a terminé
+            pid_t pid = -1; // utile plus tard pour pouvoir récupérer le pid du fils qui a terminé
             int fd = STDOUT_FD;
             while (base < end) {
                 int spe_i;
@@ -358,7 +358,7 @@ int main(int argc, char *argv[]) {
                 base = ++next;
                 fd = STDOUT_FD;
             }
-            while(!nb_proc) {
+            while(nb_proc) {
                 waitpid(-1, &status, 0);
                 nb_proc--;
             }
