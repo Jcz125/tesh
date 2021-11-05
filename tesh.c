@@ -163,6 +163,8 @@ void reorder(char** base, char** next) {
 Créer le file descriptor en cas d'existence d'un élément de redirection entre base et la 1ère commande à exécuter
  char** base_adr : adresse de position du pointeur (initialement au début de la table)
  int** last_out_adr : adresse de la dernière sortie (en général un fd ou un stdin s'il n'y a eu aucune sortie de commande)
+
+ int de retour : retourne le file descriptor s'il a été créé, sinon le stdout
  
  exemple : > fichier ls | grep "d"
  base pointe sur >
@@ -189,6 +191,13 @@ int create_fd(char*** base_adr, int* last_out_adr) {
     }
     return fd;
 }
+
+/*
+Permet de changer la valeur de la condition qui représente l'exécution aboutit ou non de la commande dernière commande
+ int* status : état de la dernière commande
+
+ bool de retour : true bonne exécution, false mauvaise exécution
+*/
 
 /*
 Lance un exécutable et gère la sortie et l'entrée
@@ -297,7 +306,8 @@ int main(int argc, char *argv[]) {
             char **end = entree_decoupee + nbargs;
             int status;
             int last_out = STDIN_FD;
-            int nb_proc = 0;            // compte le nombre de processus en cours qui n'a pas de wait
+            bool run_next = true;
+            int nb_pbg = 0; // non demandé il me semble
             pid_t child_pid = -1;       // utile plus tard pour pouvoir récupérer le pid du fils qui a terminé
             int fd = STDOUT_FD;
             while (base < end) {
@@ -309,52 +319,67 @@ int main(int argc, char *argv[]) {
                 next[0] = NULL;
                 switch (spe_i) {
                     case 1: // |
-                        fd = create_fd(&base, &last_out);
-                        if (fd > 1) {
-                            run(base[0], base, last_out, fd, &child_pid);
-                            nb_proc++;
-                            last_out = 0;
-                        } else {
-                            last_out = run(base[0], base, last_out, -1, &child_pid);
-                            nb_proc++;
+                        if (run_next) {
+                            fd = create_fd(&base, &last_out);
+                            if (fd > 1) {
+                                run(base[0], base, last_out, fd, &child_pid);
+                                last_out = open("/dev/null", O_RDONLY);
+                            } else {
+                                last_out = run(base[0], base, last_out, -1, &child_pid);
+                            }
+                            waitpid(child_pid, &status, 0);
                         }
+                        run_next = true;                    // dans tous les cas on run la suite // if status == 0
                         break;
 
                     case 2: // &&
-                        fd = create_fd(&base, &last_out);
-                        run(base[0], base, last_out, fd, &child_pid);
-                        waitpid(child_pid, &status, 0);
-                        last_out = STDIN_FD;
-                        if (status != 0)                                    // si la commande avant && ne s'est pas exécutée correctement
-                            base = search(++next, end, &spe_i);             // on ignore la commande après && jusqu'au prochain caractère spécial
+                        if (run_next) {
+                            fd = create_fd(&base, &last_out);
+                            run(base[0], base, last_out, fd, &child_pid);
+                            waitpid(child_pid, &status, 0);
+                        }
+                        last_out = open("/dev/null", O_RDONLY);
+                        if (status == 0)                        // si la commande avant && ne s'est pas exécutée correctement
+                            run_next = true;                   // on ignore la commande après &&
+                        else
+                            run_next = false;
                         break;
 
                     case 3: // ||
-                        fd = create_fd(&base, &last_out);
-                        run(base[0], base, last_out, fd, &child_pid);
-                        waitpid(child_pid, &status, 0);
-                        last_out = STDIN_FD;
-                        if (status == 0)                                    // si la commande avant || s'est exécutée sans erreur
-                            base = search(++next, end, &spe_i);             // on ignore la commande après || jusqu'au prochain caractère spécial
+                        if (run_next) {
+                            fd = create_fd(&base, &last_out);
+                            run(base[0], base, last_out, fd, &child_pid);
+                            waitpid(child_pid, &status, 0);
+                        }
+                        last_out = open("/dev/null", O_RDONLY);
+                        if (status == 0)                         // si la commande avant || s'est exécutée sans erreur
+                            run_next = false;                    // on ignore la commande après ||
+                        else
+                            run_next = true;
                         break;
 
                     case 4: // &
+                        fd = create_fd(&base, &last_out);
+                        run(base[0], base, last_out, fd, &child_pid);
+                        printf("[%d] %d\n", ++nb_pbg, child_pid);
+
+                        last_out = STDIN_FD;
+                        run_next = true;
                         break;
 
                     default:
-                        fd = create_fd(&base, &last_out);
-                        run(base[0], base, last_out, fd, &child_pid);
-                        waitpid(child_pid, &status, 0);
+                        if (run_next) {
+                            fd = create_fd(&base, &last_out);
+                            run(base[0], base, last_out, fd, &child_pid);
+                            waitpid(child_pid, &status, 0);
+                        }
                         last_out = STDIN_FD;
+                        run_next = true;
                         break;
                 }
                 base = ++next;
                 fd = STDOUT_FD;
                 child_pid = -1;
-            }
-            while(nb_proc) {
-                waitpid(-1, &status, 0);
-                nb_proc--;
             }
         }
     }
