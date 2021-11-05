@@ -174,12 +174,11 @@ Créer le file descriptor en cas d'existence d'un élément de redirection entre
 int create_fd(char*** base_adr, int* last_out_adr) {
     int fd = STDOUT_FD;
     if (!strcmp(*base_adr[0], ">")) {
-        fd = open((*base_adr)[1], O_WRONLY);
-        // printf("PRINT - int fd = %d\n", fd);
+        fd = open((*base_adr)[1], O_WRONLY | O_TRUNC | O_CREAT, 0664);
         *base_adr += 2;
     }
     else if (!strcmp(*base_adr[0], ">>")) {
-        fd = open((*base_adr)[1], O_APPEND);
+        fd = open((*base_adr)[1], O_WRONLY | O_APPEND | O_CREAT, 0664);
         *base_adr += 2;
     }
     if (!strcmp(*base_adr[0], "<")) {
@@ -299,7 +298,7 @@ int main(int argc, char *argv[]) {
             int status;
             int last_out = STDIN_FD;
             int new_out;
-            // int old_out = 0;
+            int nb_proc = 0; // compte le nombre de processus en cours qui n'a pas de wait
             // pid_t pid; // utile plus tard pour pouvoir récupérer le pid du fils qui a terminé
             int fd = STDOUT_FD;
             while (base < end) {
@@ -314,9 +313,12 @@ int main(int argc, char *argv[]) {
                         fd = create_fd(&base, &last_out);
                         if (fd > 1) {
                             run(base[0], base, last_out, fd);
-                            last_out = NULL;
-                        } else
+                            nb_proc++;
+                            last_out = 0;
+                        } else {
                             last_out = run(base[0], base, last_out, -1);
+                            nb_proc++;
+                        }
                         break;
 
                     case 2: // &&
@@ -355,6 +357,10 @@ int main(int argc, char *argv[]) {
                 }
                 base = ++next;
                 fd = STDOUT_FD;
+            }
+            while(!nb_proc) {
+                waitpid(-1, &status, 0);
+                nb_proc--;
             }
         }
     }
