@@ -201,21 +201,24 @@ Permet de mettre en frontground l'exécution en background d'un processus
  bool de retour : true s'il y a eu un fg, false sinon
 */
 bool fg(char*** base_adr, char*** next_adr, pid_t* pid_tab, int* status_adr, int* nb_bg_adr) {
-    if (!strcmp((*base_adr)[0], "fg") && (*nb_bg_adr != 0)) {
-        pid_t pid = pid_tab[--(*nb_bg_adr)];
-        if (*base_adr - *next_adr < -1) {   // on regarde si next est juste après base
-            // il y a des arguments après pour fg
-            pid_t pid = atoi((*base_adr)[1]);
-            // on permute le pid choisit et le dernier pid de la liste
-            for (int i=0; i<*nb_bg_adr; i++)
-                if (pid_tab[i] == pid)
-                    pid_tab[i] = pid_tab[*nb_bg_adr];
-        }
-        waitpid(pid, status_adr, 0);
-        printf("[%d->%d]\n", pid, *status_adr);
+    if (!strcmp((*base_adr)[0], "fg")) {
+        if (*nb_bg_adr != 0) {
+            pid_t pid = pid_tab[--(*nb_bg_adr)];
+            if (*base_adr - *next_adr < -1) {   // on regarde si next est juste après base
+                // il y a des arguments après pour fg
+                pid_t pid = atoi((*base_adr)[1]);
+                // on permute le pid choisit et le dernier pid de la liste
+                for (int i=0; i<*nb_bg_adr; i++)
+                    if (pid_tab[i] == pid)
+                        pid_tab[i] = pid_tab[*nb_bg_adr];
+                }
+            waitpid(pid, status_adr, 0);
+            printf("[%d->%d]\n", pid, WEXITSTATUS(*status_adr));
+        } else
+            printf("Nothing in background\n");
         return true;
-    } else
-        return false;
+    }
+    return false;
 }
 
 /*
