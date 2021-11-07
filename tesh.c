@@ -175,15 +175,15 @@ Créer le file descriptor en cas d'existence d'un élément de redirection entre
 */
 int create_fd(char*** base_adr, int* last_out_adr) {
     int fd = STDOUT_FD;
-    if (!strcmp(*base_adr[0], ">")) {
+    if (!strcmp((*base_adr)[0], ">")) {
         fd = open((*base_adr)[1], O_WRONLY | O_TRUNC | O_CREAT, 0664);
         *base_adr += 2;
     }
-    else if (!strcmp(*base_adr[0], ">>")) {
+    else if (!strcmp((*base_adr)[0], ">>")) {
         fd = open((*base_adr)[1], O_WRONLY | O_APPEND | O_CREAT, 0664);
         *base_adr += 2;
     }
-    if (!strcmp(*base_adr[0], "<")) {
+    if (!strcmp((*base_adr)[0], "<")) {
         if (*last_out_adr != STDIN_FD)
             close(*last_out_adr);           // on ferme le file descriptor car inutile ici la fichier sera pris en stdin via <
         *last_out_adr = open((*base_adr)[1], O_RDONLY);
@@ -191,13 +191,6 @@ int create_fd(char*** base_adr, int* last_out_adr) {
     }
     return fd;
 }
-
-/*
-Permet de changer la valeur de la condition qui représente l'exécution aboutit ou non de la commande dernière commande
- int* status : état de la dernière commande
-
- bool de retour : true bonne exécution, false mauvaise exécution
-*/
 
 /*
 Lance un exécutable et gère la sortie et l'entrée
@@ -307,7 +300,6 @@ int main(int argc, char *argv[]) {
             int status;
             int last_out = STDIN_FD;
             bool run_next = true;
-            int nb_pbg = 0; // non demandé il me semble
             pid_t child_pid = -1;       // utile plus tard pour pouvoir récupérer le pid du fils qui a terminé
             int fd = STDOUT_FD;
             while (base < end) {
@@ -329,7 +321,7 @@ int main(int argc, char *argv[]) {
                             }
                             waitpid(child_pid, &status, 0);
                         }
-                        run_next = true;                    // dans tous les cas on run la suite // if status == 0
+                        run_next = true;                        // dans tous les cas on run la suite // if status == 0
                         break;
 
                     case 2: // &&
@@ -340,7 +332,7 @@ int main(int argc, char *argv[]) {
                         }
                         last_out = open("/dev/null", O_RDONLY);
                         if (status == 0)                        // si la commande avant && ne s'est pas exécutée correctement
-                            run_next = true;                   // on ignore la commande après &&
+                            run_next = true;                    // on ignore la commande après &&
                         else
                             run_next = false;
                         break;
@@ -361,7 +353,7 @@ int main(int argc, char *argv[]) {
                     case 4: // &
                         fd = create_fd(&base, &last_out);
                         run(base[0], base, last_out, fd, &child_pid);
-                        printf("[%d] %d\n", ++nb_pbg, child_pid);
+                        printf("[%d]\n", child_pid);
 
                         last_out = STDIN_FD;
                         run_next = true;
