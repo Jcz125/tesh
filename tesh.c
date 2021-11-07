@@ -161,8 +161,8 @@ void reorder(char** base, char** next) {
 
 /*
 Créer le file descriptor en cas d'existence d'un élément de redirection entre base et la 1ère commande à exécuter
- char** base_adr : adresse de position du pointeur (initialement au début de la table)
- int** last_out_adr : adresse de la dernière sortie (en général un fd ou un stdin s'il n'y a eu aucune sortie de commande)
+ char*** base_adr : adresse de position du pointeur de lecture d'argument (initialement au début de la table)
+ int* last_out_adr : adresse de la dernière sortie (en général un fd ou un stdin s'il n'y a eu aucune sortie de commande)
 
  int de retour : retourne le file descriptor s'il a été créé, sinon le stdout
  
@@ -175,15 +175,15 @@ Créer le file descriptor en cas d'existence d'un élément de redirection entre
 */
 int create_fd(char*** base_adr, int* last_out_adr) {
     int fd = STDOUT_FD;
-    if (!strcmp(*base_adr[0], ">")) {
+    if (!strcmp((*base_adr)[0], ">")) {
         fd = open((*base_adr)[1], O_WRONLY | O_TRUNC | O_CREAT, 0664);
         *base_adr += 2;
     }
-    else if (!strcmp(*base_adr[0], ">>")) {
+    else if (!strcmp((*base_adr)[0], ">>")) {
         fd = open((*base_adr)[1], O_WRONLY | O_APPEND | O_CREAT, 0664);
         *base_adr += 2;
     }
-    if (!strcmp(*base_adr[0], "<")) {
+    if (!strcmp((*base_adr)[0], "<")) {
         if (*last_out_adr != STDIN_FD)
             close(*last_out_adr);           // on ferme le file descriptor car inutile ici la fichier sera pris en stdin via <
         *last_out_adr = open((*base_adr)[1], O_RDONLY);
@@ -193,11 +193,30 @@ int create_fd(char*** base_adr, int* last_out_adr) {
 }
 
 /*
-Permet de changer la valeur de la condition qui représente l'exécution aboutit ou non de la commande dernière commande
- int* status : état de la dernière commande
+Permet de mettre en frontground l'exécution en background d'un processus
+ char*** base_adr : adresse de position du pointeur de lecture d'argument (initialement au début de la table)
+ char*** next_adr : adresse de position du prochain argument à réaliser
+ pid_t* pid_tab : tableau de pid en background
 
- bool de retour : true bonne exécution, false mauvaise exécution
+ bool de retour : true s'il y a eu un fg, false sinon
 */
+bool fg(char*** base_adr, char*** next_adr, pid_t* pid_tab, int* status_adr, int* nb_bg_adr) {
+    if (!strcmp((*base_adr)[0], "fg") && (*nb_bg_adr != 0)) {
+        pid_t pid = pid_tab[--(*nb_bg_adr)];
+        if (*base_adr - *next_adr < -1) {   // on regarde si next est juste après base
+            // il y a des arguments après pour fg
+            pid_t pid = atoi((*base_adr)[1]);
+            // on permute le pid choisit et le dernier pid de la liste
+            for (int i=0; i<*nb_bg_adr; i++)
+                if (pid_tab[i] == pid)
+                    pid_tab[i] = pid_tab[*nb_bg_adr];
+        }
+        waitpid(pid, status_adr, 0);
+        printf("[%d->%d]\n", pid, *status_adr);
+        return true;
+    } else
+        return false;
+}
 
 /*
 Lance un exécutable et gère la sortie et l'entrée
@@ -246,7 +265,8 @@ int main(int argc, char *argv[]) {
     char *username;
     char *user_home;
     struct passwd *pw = getpwuid(getuid());
-
+    pid_t* pid_tab = calloc(100, sizeof(pid_t));
+    int nb_bg = 0;
     char entree[BUFFER_LENGTH]; // Copie de input_buffer mais apres l'appel à decoupage, les espaces remplacés par des \0
     char *entree_decoupee[ARG_MAX]; // Tableau pour découper l'entrée (pointe vers entree)
 
@@ -307,7 +327,6 @@ int main(int argc, char *argv[]) {
             int status;
             int last_out = STDIN_FD;
             bool run_next = true;
-            int nb_pbg = 0; // non demandé il me semble
             pid_t child_pid = -1;       // utile plus tard pour pouvoir récupérer le pid du fils qui a terminé
             int fd = STDOUT_FD;
             while (base < end) {
@@ -317,6 +336,8 @@ int main(int argc, char *argv[]) {
 
                 // on enlève le caractère spécial pour que base puisse être donné directement à execvp
                 next[0] = NULL;
+                if (fg(&base, &next, pid_tab, &status, &nb_bg)) // supposons que fd s'exécute tout seul ou en dernière position de commande
+                    break;
                 switch (spe_i) {
                     case 1: // |
                         if (run_next) {
@@ -329,7 +350,7 @@ int main(int argc, char *argv[]) {
                             }
                             waitpid(child_pid, &status, 0);
                         }
-                        run_next = true;                    // dans tous les cas on run la suite // if status == 0
+                        run_next = true;                        // dans tous les cas on run la suite // if status == 0
                         break;
 
                     case 2: // &&
@@ -340,7 +361,7 @@ int main(int argc, char *argv[]) {
                         }
                         last_out = open("/dev/null", O_RDONLY);
                         if (status == 0)                        // si la commande avant && ne s'est pas exécutée correctement
-                            run_next = true;                   // on ignore la commande après &&
+                            run_next = true;                    // on ignore la commande après &&
                         else
                             run_next = false;
                         break;
@@ -352,8 +373,8 @@ int main(int argc, char *argv[]) {
                             waitpid(child_pid, &status, 0);
                         }
                         last_out = open("/dev/null", O_RDONLY);
-                        if (status == 0)                         // si la commande avant || s'est exécutée sans erreur
-                            run_next = false;                    // on ignore la commande après ||
+                        if (status == 0)                        // si la commande avant || s'est exécutée sans erreur
+                            run_next = false;                   // on ignore la commande après ||
                         else
                             run_next = true;
                         break;
@@ -361,8 +382,8 @@ int main(int argc, char *argv[]) {
                     case 4: // &
                         fd = create_fd(&base, &last_out);
                         run(base[0], base, last_out, fd, &child_pid);
-                        printf("[%d] %d\n", ++nb_pbg, child_pid);
-
+                        pid_tab[nb_bg++] = child_pid;
+                        printf("[%d]\n", child_pid);
                         last_out = STDIN_FD;
                         run_next = true;
                         break;
