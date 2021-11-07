@@ -213,6 +213,7 @@ bool fg(char*** base_adr, char*** next_adr, pid_t* pid_tab, int* status_adr, int
                         pid_tab[i] = pid_tab[*nb_bg_adr];
                 }
             waitpid(pid, status_adr, 0);
+            // if (WIFEXITED(*status_adr))      // utile ?
             printf("[%d->%d]\n", pid, WEXITSTATUS(*status_adr));
         } else
             printf("Nothing in background\n");
