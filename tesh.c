@@ -352,7 +352,6 @@ int main(int argc, char *argv[]) {
                             } else {
                                 last_out = run(base[0], base, last_out, -1, &child_pid);
                             }
-                            waitpid(child_pid, &status, 0);
                         }
                         run_next = true;                        // dans tous les cas on run la suite // if status == 0
                         break;
