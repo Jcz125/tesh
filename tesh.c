@@ -206,7 +206,7 @@ bool fg(char*** base_adr, char*** next_adr, pid_t* pid_tab, int* status_adr, int
             pid_t pid = pid_tab[--(*nb_bg_adr)];
             if (*base_adr - *next_adr < -1) {   // on regarde si next est juste après base
                 // il y a des arguments après pour fg
-                pid_t pid = atoi((*base_adr)[1]);
+                pid = atoi((*base_adr)[1]);
                 // on permute le pid choisit et le dernier pid de la liste
                 for (int i=0; i<*nb_bg_adr; i++)
                     if (pid_tab[i] == pid)
@@ -389,6 +389,7 @@ int main(int argc, char *argv[]) {
                         run(base[0], base, last_out, fd, &child_pid);
                         pid_tab[nb_bg++] = child_pid;
                         printf("[%d]\n", child_pid);
+                        fflush(stdout);
                         last_out = STDIN_FD;
                         run_next = true;
                         break;
