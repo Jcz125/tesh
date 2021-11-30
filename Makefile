@@ -1,4 +1,7 @@
 CC=gcc
 CFLAGS=-Wall
+SRC=$(wildcard *.c)
+LIBS=-ldl
 
-all: tesh
+tesh: $(SRC)
+	$(CC) -g -o $@ $^ $(CFLAGS) $(LIBS)
