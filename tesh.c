@@ -298,9 +298,11 @@ int main(int argc, char *argv[]) {
             printf("Erreur lors de la récupération du répertoire courant.\n");
             return EXIT_FAILURE;
         }
-        printf("%s@%s:%s$ ", username, hostname, path);
-        // Flush le buffer de stdout pour que le USER@HOSTNAME:REPCOURANT$ sans retour à la ligne
-        fflush(stdout);
+        if (isatty(STDIN_FILENO)) {
+            printf("%s@%s:%s$ ", username, hostname, path);
+            // Flush le buffer de stdout pour que le USER@HOSTNAME:REPCOURANT$ sans retour à la ligne
+            fflush(stdout);
+        }
         if (fgets(input_buffer, BUFFER_LENGTH, stdin) == NULL) {
             // Si un CTRL+D a été détecté
             return EXIT_SUCCESS;
