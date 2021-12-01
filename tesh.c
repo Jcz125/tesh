@@ -10,6 +10,7 @@
 #include <pwd.h>
 #include <sys/stat.h>
 #include <fcntl.h>
+#include <getopt.h>
 
 #define BUFFER_LENGTH 4096
 #define ARG_MAX 512
@@ -243,6 +244,34 @@ int main(int argc, char *argv[]) {
     char entree[BUFFER_LENGTH]; // Copie de input_buffer mais apres l'appel à decoupage, les espaces remplacés par des \0
     char *entree_decoupee[ARG_MAX]; // Tableau pour découper l'entrée (pointe vers entree)
 
+    bool showprompt = true;
+    int activate_readline, stop_on_error;
+    int fileinput = -1;
+
+    int c;
+    while ((c = getopt(argc, argv, "re")) != -1) {
+        switch (c) {
+            case 'r':
+                activate_readline = 1;
+                break;
+            case 'e':
+                stop_on_error = 1;
+                break;
+            }
+    }
+
+    if (optind != -1 && argv[optind] != NULL) { //if getopt_long has found other option than -e or -r
+        fileinput = open(argv[optind], O_RDONLY);
+        dup2(fileinput, STDIN_FD);
+        printf("NEIN %s-\n", argv[optind]);
+        showprompt = false;
+    }
+
+    if (isatty(STDIN_FD) != 1) {
+        printf("hello");
+        showprompt = false;
+    }
+
     if ((username = getlogin()) == NULL) {
         if (pw == NULL || (username = pw->pw_name) == NULL) {
             printf("Erreur lors de la récupération du nom d'utilisateur.\n");
@@ -267,9 +296,11 @@ int main(int argc, char *argv[]) {
             printf("Erreur lors de la récupération du répertoire courant.\n");
             return EXIT_FAILURE;
         }
-        printf("%s@%s:%s$ ", username, hostname, path);
-        // Flush le buffer de stdout pour que le USER@HOSTNAME:REPCOURANT$ sans retour à la ligne
-        fflush(stdout);
+        if (showprompt) {
+            printf("%s@%s:%s$ ", username, hostname, path);
+            // Flush le buffer de stdout pour que le USER@HOSTNAME:REPCOURANT$ sans retour à la ligne
+            fflush(stdout);
+        }
         if (fgets(input_buffer, BUFFER_LENGTH, stdin) == NULL) {
             // Si un CTRL+D a été détecté
             return EXIT_SUCCESS;
@@ -332,8 +363,11 @@ int main(int argc, char *argv[]) {
                         last_out = open("/dev/null", O_RDONLY);
                         if (status == 0)                        // si la commande avant && ne s'est pas exécutée correctement
                             run_next = true;                    // on ignore la commande après &&
-                        else
+                        else {
                             run_next = false;
+                            if (stop_on_error)
+                                stop = true;
+                        }
                         break;
 
                     case 3: // ||
@@ -345,8 +379,11 @@ int main(int argc, char *argv[]) {
                         last_out = open("/dev/null", O_RDONLY);
                         if (status == 0)                         // si la commande avant || s'est exécutée sans erreur
                             run_next = false;                    // on ignore la commande après ||
-                        else
+                        else {
                             run_next = true;
+                            if (stop_on_error)
+                                stop = true;
+                        }
                         break;
 
                     case 4: // &
@@ -363,6 +400,8 @@ int main(int argc, char *argv[]) {
                             fd = create_fd(&base, &last_out);
                             run(base[0], base, last_out, fd, &child_pid);
                             waitpid(child_pid, &status, 0);
+                            if (stop_on_error && status != 0)
+                                stop = true;
                         }
                         last_out = STDIN_FD;
                         run_next = true;
@@ -374,6 +413,9 @@ int main(int argc, char *argv[]) {
             }
         }
     }
+
+    if (fileinput != -1)
+        close(fileinput);
 
     return EXIT_SUCCESS;
 }
