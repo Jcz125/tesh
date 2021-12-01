@@ -389,7 +389,6 @@ int main(int argc, char *argv[]) {
                                 last_out = run(base[0], base, last_out, -1, &child_pid);
                             }
                         }
-                        run_next = true;                        // dans tous les cas on run la suite // if status == 0
                         break;
 
                     case 2: // &&
