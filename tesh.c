@@ -11,6 +11,7 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <getopt.h>
+#include <dlfcn.h>
 
 #define BUFFER_LENGTH 4096
 #define ARG_MAX 512
@@ -231,12 +232,12 @@ bool fg(char*** base_adr, char*** next_adr, pid_t* pid_tab, int* status_adr, int
 Lance un exécutable et gère la sortie et l'entrée
  char* file : fichier à éxécuter
  char *argv[] : paramètres
- int input : file descriptor pour l'entrée (par défaut stdin)
+ int entree_raw : file descriptor pour l'entrée (par défaut stdin)
  bool stdout : si le retour doit être stdout ou un pipe créé
 
  int de retour : file descriptor de sortie (par défaut stdout)
 */
-int run(const char* file, char *args[], int input, int out, pid_t* child_pid_adr) {
+int run(const char* file, char *args[], int entree_raw, int out, pid_t* child_pid_adr) {
     int fd[2];
     if (out == -1)
         pipe(fd);
@@ -247,8 +248,8 @@ int run(const char* file, char *args[], int input, int out, pid_t* child_pid_adr
 
     if(!(*child_pid_adr = fork())) {
         //si fils
-        if (input != STDIN_FD)
-            dup2(input, STDIN_FD);
+        if (entree_raw != STDIN_FD)
+            dup2(entree_raw, STDIN_FD);
         dup2(fd[1], STDOUT_FD); // si out=STDOUT_FD alors fd[1]=STDOUT_FD et ça change rien ici
 
         int status = execvp(file, args);
@@ -256,8 +257,8 @@ int run(const char* file, char *args[], int input, int out, pid_t* child_pid_adr
         exit(EXIT_FAILURE);
     }
 
-    if (input != STDIN_FD)
-        close(input);
+    if (entree_raw != STDIN_FD)
+        close(entree_raw);
 
     // Plus besoin d'écrire dans l'entée, c'est au fils de le faire
     if (fd[1] != STDOUT_FD)
@@ -268,20 +269,29 @@ int run(const char* file, char *args[], int input, int out, pid_t* child_pid_adr
 
 
 int main(int argc, char *argv[]) {
-    char input_buffer[BUFFER_LENGTH];
     char hostname[HOST_NAME_MAX];
     char path[PATH_MAX];
     char *username;
     char *user_home;
     struct passwd *pw = getpwuid(getuid());
     pid_t* pid_tab = calloc(100, sizeof(pid_t));
+
     int nb_bg = 0;
-    char entree[BUFFER_LENGTH]; // Copie de input_buffer mais apres l'appel à decoupage, les espaces remplacés par des \0
+
+    char *entree_raw = NULL;
+    char *entree = NULL; // Copie de entree_raw mais apres l'appel à decoupage, les espaces remplacés par des \0
     char *entree_decoupee[ARG_MAX]; // Tableau pour découper l'entrée (pointe vers entree)
+    char prompt[HOST_NAME_MAX + PATH_MAX + 4 + 512];
+
+    void* libreadline = NULL;
+    int (*read_history)(char*) = NULL;
+    char* (*readline)(char*) = NULL;
+    void (*add_history)(char*) = NULL;
+    int (*write_history)(char*) = NULL;
 
     bool showprompt = true;
     int activate_readline, stop_on_error;
-    int fileinput = -1;
+    int fileentree_raw = -1;
 
     int c;
     while ((c = getopt(argc, argv, "re")) != -1) {
@@ -296,8 +306,8 @@ int main(int argc, char *argv[]) {
     }
 
     if (optind != -1 && argv[optind] != NULL) { //if getopt_long has found other option than -e or -r
-        fileinput = open(argv[optind], O_RDONLY);
-        dup2(fileinput, STDIN_FD);
+        fileentree_raw = open(argv[optind], O_RDONLY);
+        dup2(fileentree_raw, STDIN_FD);
         showprompt = false;
     }
 
@@ -307,38 +317,73 @@ int main(int argc, char *argv[]) {
 
     if ((username = getlogin()) == NULL) {
         if (pw == NULL || (username = pw->pw_name) == NULL) {
-            printf("Erreur lors de la récupération du nom d'utilisateur.\n");
+            fprintf(stderr, "Erreur lors de la récupération du nom d'utilisateur.\n");
             return EXIT_FAILURE;
         }
     }
 
     if (gethostname(hostname, HOST_NAME_MAX) != 0) {
-        printf("Erreur lors de la récupération du hostname.\n");
+        fprintf(stderr, "Erreur lors de la récupération du hostname.\n");
         return EXIT_FAILURE;
     }
 
     if ((user_home = getenv("HOME")) == NULL) {
         if (pw == NULL || (user_home = pw->pw_dir) == NULL) {
-            printf("Impossible de réccupérer le Home de l'utilisateur.\n");
+            fprintf(stderr, "Impossible de réccupérer le Home de l'utilisateur.\n");
             return EXIT_FAILURE;
         }
     }
 
-    while(!stop) {
-        if (getcwd(path, PATH_MAX) == NULL) {
-            printf("Erreur lors de la récupération du répertoire courant.\n");
+    if (activate_readline) {
+        libreadline =  dlopen("libreadline.so", RTLD_LAZY);
+        if (libreadline == NULL) {
+            fprintf(stderr, "Ne peut pas charger libreadline.so : %s\n", dlerror());
             return EXIT_FAILURE;
         }
-        if (showprompt) {
-            printf("%s@%s:%s$ ", username, hostname, path);
-            // Flush le buffer de stdout pour que le USER@HOSTNAME:REPCOURANT$ sans retour à la ligne
-            fflush(stdout);
+        if ((readline = (char* (*)(char*))dlsym(libreadline, "readline")) == NULL
+            || (add_history = (void (*)(char*))dlsym(libreadline, "add_history")) == NULL
+            || (read_history = (int (*)(char*))dlsym(libreadline, "read_history")) == NULL
+            || (write_history = (int (*)(char*))dlsym(libreadline, "write_history")) == NULL) {
+            fprintf(stderr, "Ne peut pas charger un symbole de libreadline.so : %s\n", dlerror());
+            return EXIT_FAILURE;
         }
-        if (fgets(input_buffer, BUFFER_LENGTH, stdin) == NULL) {
-            // Si un CTRL+D a été détecté
-            return EXIT_SUCCESS;
+        read_history(NULL);
+    }
+    else {
+        entree = calloc(BUFFER_LENGTH, sizeof(char));
+        entree_raw = calloc(BUFFER_LENGTH, sizeof(char));
+    }
+
+    while(!stop) {
+        if (getcwd(path, PATH_MAX) == NULL) {
+            fprintf(stderr, "Erreur lors de la récupération du répertoire courant.\n");
+            return EXIT_FAILURE;
         }
-        memcpy(entree, input_buffer, BUFFER_LENGTH);
+        if (showprompt)
+            sprintf(prompt, "%s@%s:%s$ ", username, hostname, path);
+
+        if (activate_readline) {
+            if (entree_raw)
+                free(entree_raw);
+            if (entree)
+                free(entree);
+            entree_raw = readline(prompt);
+            if (entree_raw == NULL) // Si un CTRL+D a été détecté
+                return EXIT_SUCCESS;
+            entree = strdup(entree_raw);
+            add_history(entree);
+            write_history(NULL);
+        }
+        else {
+            if (showprompt) {
+                printf(prompt);
+                fflush(stdout); // Flush le buffer de stdout pour que le USER@HOSTNAME:REPCOURANT$ sans retour à la ligne
+            }
+            if (fgets(entree_raw, BUFFER_LENGTH, stdin) == NULL) // Si un CTRL+D a été détecté
+                return EXIT_SUCCESS;
+            memcpy(entree, entree_raw, BUFFER_LENGTH);
+        }
+
         int nbargs = decouper(entree, entree_decoupee);
 
         if (nbargs == 0 || entree_decoupee[0][0] == '\0') {
@@ -346,7 +391,7 @@ int main(int argc, char *argv[]) {
         }
 
         if (strcmp(entree_decoupee[0], "cd")  == 0) {
-            char *path = input_buffer + 3; // Après "cd "
+            char *path = entree_raw + 3; // Après "cd "
             if (nbargs == 1) {
                 path = user_home;
             }
@@ -354,7 +399,7 @@ int main(int argc, char *argv[]) {
                 strchr(path, '\n')[0] = '\0';
             }
             if (chdir(path) != 0) {
-                printf("Erreur lors du changement du répertoire courant à %s\n", path);
+                fprintf(stderr, "Erreur lors du changement du répertoire courant à %s\n", path);
             }
         }
         else {
@@ -371,8 +416,7 @@ int main(int argc, char *argv[]) {
                 next = search(base, end, &spe_i);
                 reorder(base, next);    // base tombe sur la commande à exécuter
 
-                // on enlève le caractère spécial pour que base puisse être donné directement à execvp
-                next[0] = NULL;
+                next[0] = NULL; // on enlève le caractère spécial pour que base puisse être donné directement à execvp
                 if (fg(&base, &next, pid_tab, &status, &nb_bg)) { // supposons que fd s'exécute tout seul ou en dernière position de commande
                     if (stop_on_error && status != 0)
                         stop = true;
@@ -454,8 +498,20 @@ int main(int argc, char *argv[]) {
         }
     }
 
-    if (fileinput != -1)
-        close(fileinput);
+    if (entree_raw)
+        free(entree_raw);
+    if (entree)
+        free(entree);
+
+    if (activate_readline && readline != NULL) {
+        if (dlclose(readline) != 0) {
+            fprintf(stderr, "N'arrive pas à fermer libreadline.so : %s", dlerror());
+            return EXIT_FAILURE;
+        }
+    }
+
+    if (fileentree_raw != -1)
+        close(fileentree_raw);
 
     return EXIT_SUCCESS;
 }
