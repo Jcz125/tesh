@@ -232,12 +232,12 @@ bool fg(char*** base_adr, char*** next_adr, pid_t* pid_tab, int* status_adr, int
 Lance un exécutable et gère la sortie et l'entrée
  char* file : fichier à éxécuter
  char *argv[] : paramètres
- int entree_raw : file descriptor pour l'entrée (par défaut stdin)
+ int input : file descriptor pour l'entrée (par défaut stdin)
  bool stdout : si le retour doit être stdout ou un pipe créé
 
  int de retour : file descriptor de sortie (par défaut stdout)
 */
-int run(const char* file, char *args[], int entree_raw, int out, pid_t* child_pid_adr) {
+int run(const char* file, char *args[], int input, int out, pid_t* child_pid_adr) {
     int fd[2];
     if (out == -1)
         pipe(fd);
@@ -248,17 +248,23 @@ int run(const char* file, char *args[], int entree_raw, int out, pid_t* child_pi
 
     if(!(*child_pid_adr = fork())) {
         //si fils
-        if (entree_raw != STDIN_FD)
-            dup2(entree_raw, STDIN_FD);
-        dup2(fd[1], STDOUT_FD); // si out=STDOUT_FD alors fd[1]=STDOUT_FD et ça change rien ici
+        if (input != STDIN_FD) {
+            dup2(input, STDIN_FD);
+            close(input);
+        }
+
+        if (fd[1] != STDOUT_FD) {
+            dup2(fd[1], STDOUT_FD);
+            close(fd[1]);
+        }
 
         int status = execvp(file, args);
         fprintf(stderr, "Ne peut pas exécuter \"%s\" Code d'erreur : %d\n", file, status);
         exit(EXIT_FAILURE);
     }
 
-    if (entree_raw != STDIN_FD)
-        close(entree_raw);
+    if (input != STDIN_FD)
+        close(input);
 
     // Plus besoin d'écrire dans l'entée, c'est au fils de le faire
     if (fd[1] != STDOUT_FD)
