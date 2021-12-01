@@ -10,6 +10,7 @@
 #include <pwd.h>
 #include <sys/stat.h>
 #include <fcntl.h>
+#include <getopt.h>
 
 #define BUFFER_LENGTH 4096
 #define ARG_MAX 512
@@ -62,7 +63,11 @@ int decouper(char* entree, char **sortie) {
 
     if(entree[0] != '\0') {
         sortie[i++] = base;
-        strchr(base, '\n')[0] = '\0';
+        char *search = base;
+        while(search[0] != '\n' && search[0] != '\0') {
+            search++;
+        }
+        search[0] = '\0';
     }
 
     sortie[i] = NULL;
@@ -274,6 +279,32 @@ int main(int argc, char *argv[]) {
     char entree[BUFFER_LENGTH]; // Copie de input_buffer mais apres l'appel à decoupage, les espaces remplacés par des \0
     char *entree_decoupee[ARG_MAX]; // Tableau pour découper l'entrée (pointe vers entree)
 
+    bool showprompt = true;
+    int activate_readline, stop_on_error;
+    int fileinput = -1;
+
+    int c;
+    while ((c = getopt(argc, argv, "re")) != -1) {
+        switch (c) {
+            case 'r':
+                activate_readline = 1;
+                break;
+            case 'e':
+                stop_on_error = 1;
+                break;
+            }
+    }
+
+    if (optind != -1 && argv[optind] != NULL) { //if getopt_long has found other option than -e or -r
+        fileinput = open(argv[optind], O_RDONLY);
+        dup2(fileinput, STDIN_FD);
+        showprompt = false;
+    }
+
+    if (isatty(STDIN_FD) != 1) {
+        showprompt = false;
+    }
+
     if ((username = getlogin()) == NULL) {
         if (pw == NULL || (username = pw->pw_name) == NULL) {
             printf("Erreur lors de la récupération du nom d'utilisateur.\n");
@@ -298,7 +329,7 @@ int main(int argc, char *argv[]) {
             printf("Erreur lors de la récupération du répertoire courant.\n");
             return EXIT_FAILURE;
         }
-        if (isatty(STDIN_FILENO)) {
+        if (showprompt) {
             printf("%s@%s:%s$ ", username, hostname, path);
             // Flush le buffer de stdout pour que le USER@HOSTNAME:REPCOURANT$ sans retour à la ligne
             fflush(stdout);
@@ -342,8 +373,11 @@ int main(int argc, char *argv[]) {
 
                 // on enlève le caractère spécial pour que base puisse être donné directement à execvp
                 next[0] = NULL;
-                if (fg(&base, &next, pid_tab, &status, &nb_bg)) // supposons que fd s'exécute tout seul ou en dernière position de commande
+                if (fg(&base, &next, pid_tab, &status, &nb_bg)) { // supposons que fd s'exécute tout seul ou en dernière position de commande
+                    if (stop_on_error && status != 0)
+                        stop = true;
                     break;
+                }
                 switch (spe_i) {
                     case 1: // |
                         if (run_next) {
@@ -367,8 +401,11 @@ int main(int argc, char *argv[]) {
                         last_out = open("/dev/null", O_RDONLY);
                         if (status == 0)                        // si la commande avant && ne s'est pas exécutée correctement
                             run_next = true;                    // on ignore la commande après &&
-                        else
+                        else {
                             run_next = false;
+                            if (stop_on_error)
+                                stop = true;
+                        }
                         break;
 
                     case 3: // ||
@@ -378,10 +415,13 @@ int main(int argc, char *argv[]) {
                             waitpid(child_pid, &status, 0);
                         }
                         last_out = open("/dev/null", O_RDONLY);
-                        if (status == 0)                        // si la commande avant || s'est exécutée sans erreur
-                            run_next = false;                   // on ignore la commande après ||
-                        else
+                        if (status == 0)                         // si la commande avant || s'est exécutée sans erreur
+                            run_next = false;                    // on ignore la commande après ||
+                        else {
                             run_next = true;
+                            if (stop_on_error)
+                                stop = true;
+                        }
                         break;
 
                     case 4: // &
@@ -399,17 +439,24 @@ int main(int argc, char *argv[]) {
                             fd = create_fd(&base, &last_out);
                             run(base[0], base, last_out, fd, &child_pid);
                             waitpid(child_pid, &status, 0);
+                            if (stop_on_error && status != 0)
+                                stop = true;
                         }
                         last_out = STDIN_FD;
                         run_next = true;
                         break;
                 }
+                if (stop)
+                    break;
                 base = ++next;
                 fd = STDOUT_FD;
                 child_pid = -1;
             }
         }
     }
+
+    if (fileinput != -1)
+        close(fileinput);
 
     return EXIT_SUCCESS;
 }
