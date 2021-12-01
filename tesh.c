@@ -376,7 +376,7 @@ int main(int argc, char *argv[]) {
         }
         else {
             if (showprompt) {
-                printf(prompt);
+                printf("%s", prompt);
                 fflush(stdout); // Flush le buffer de stdout pour que le USER@HOSTNAME:REPCOURANT$ sans retour à la ligne
             }
             if (fgets(entree_raw, BUFFER_LENGTH, stdin) == NULL) // Si un CTRL+D a été détecté
