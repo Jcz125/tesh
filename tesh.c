@@ -505,6 +505,8 @@ int main(int argc, char *argv[]) {
                 fd = STDOUT_FD;
                 child_pid = -1;
             }
+            if (last_out != STDIN_FD)
+                close(last_out);
         }
     }
 
