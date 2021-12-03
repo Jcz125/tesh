@@ -513,15 +513,15 @@ int main(int argc, char *argv[]) {
     if (entree)
         free(entree);
 
+    if (fileentree_raw != -1)
+        close(fileentree_raw);
+
     if (activate_readline && readline != NULL) {
-        if (dlclose(readline) != 0) {
+        if (dlclose(libreadline) != 0) {
             fprintf(stderr, "N'arrive pas à fermer libreadline.so : %s", dlerror());
             return EXIT_FAILURE;
         }
     }
-
-    if (fileentree_raw != -1)
-        close(fileentree_raw);
 
     return EXIT_SUCCESS;
 }
