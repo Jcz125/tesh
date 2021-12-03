@@ -402,7 +402,11 @@ int main(int argc, char *argv[]) {
                 path = user_home;
             }
             else {
-                strchr(path, '\n')[0] = '\0';
+                char *search = path;
+                while(search[0] != '\n' && search[0] != '\0') {
+                    search++;
+                }
+                search[0] = '\0';
             }
             if (chdir(path) != 0) {
                 fprintf(stderr, "Erreur lors du changement du répertoire courant à %s\n", path);
