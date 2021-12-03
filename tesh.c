@@ -296,7 +296,7 @@ int main(int argc, char *argv[]) {
     int (*write_history)(char*) = NULL;
 
     bool showprompt = true;
-    int activate_readline, stop_on_error;
+    int activate_readline = 0, stop_on_error = 0;
     int fileentree_raw = -1;
 
     int c;
