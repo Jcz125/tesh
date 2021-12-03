@@ -453,7 +453,7 @@ int main(int argc, char *argv[]) {
                             run(base[0], base, last_out, fd, &child_pid);
                             waitpid(child_pid, &status, 0);
                         }
-                        last_out = open("/dev/null", O_RDONLY);
+                        last_out = STDIN_FD;
                         if (status == 0)                        // si la commande avant && ne s'est pas exécutée correctement
                             run_next = true;                    // on ignore la commande après &&
                         else {
@@ -469,7 +469,7 @@ int main(int argc, char *argv[]) {
                             run(base[0], base, last_out, fd, &child_pid);
                             waitpid(child_pid, &status, 0);
                         }
-                        last_out = open("/dev/null", O_RDONLY);
+                        last_out = STDIN_FD;
                         if (status == 0)                         // si la commande avant || s'est exécutée sans erreur
                             run_next = false;                    // on ignore la commande après ||
                         else {
