@@ -421,6 +421,7 @@ int main(int argc, char *argv[]) {
             bool run_next = true;
             pid_t child_pid = -1;       // utile plus tard pour pouvoir récupérer le pid du fils qui a terminé
             int fd = STDOUT_FD;
+            int nb_run = 0;
             while (base < end) {
                 int spe_i;
                 next = search(base, end, &spe_i);
@@ -442,6 +443,7 @@ int main(int argc, char *argv[]) {
                             } else {
                                 last_out = run(base[0], base, last_out, -1, &child_pid);
                             }
+                            nb_run++;
                         }
                         break;
 
@@ -507,6 +509,12 @@ int main(int argc, char *argv[]) {
             }
             if (last_out != STDIN_FD)
                 close(last_out);
+            for (;nb_run != 0;nb_run--) {
+                waitpid(-1, &status, 0);
+                if (stop_on_error && status != 0) {
+                    stop = true;
+                }
+            }
         }
     }
 
