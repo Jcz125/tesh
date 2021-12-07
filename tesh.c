@@ -258,6 +258,9 @@ int run(const char* file, char *args[], int input, int out, pid_t* child_pid_adr
             close(fd[1]);
         }
 
+        if (fd[0] != STDOUT_FD)
+            close(fd[0]);
+
         int status = execvp(file, args);
         fprintf(stderr, "Ne peut pas exécuter \"%s\" Code d'erreur : %d\n", file, status);
         exit(EXIT_FAILURE);
