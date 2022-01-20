@@ -1,1 +1,1 @@
-dépôt-template pour le projet RS 2021
+Dépôt-template pour le projet RS 2021 - Shell implementation
